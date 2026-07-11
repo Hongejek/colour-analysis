@@ -1,0 +1,1516 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片颜色聚类可视化 - K-Means</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --bg: #1a1a2e;
+            --card-bg: #16213e;
+            --text: #e0e0e0;
+            --accent: #e94560;
+            --accent2: #0f3460;
+            --border: #2a2a4a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            padding: 30px 20px 20px;
+        }
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #e94560, #ff6b6b, #ffa502);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+        }
+        .header p {
+            color: #888;
+            font-size: 0.95rem;
+        }
+
+        /* 控制面板 */
+        .control-panel {
+            max-width: 1100px;
+            margin: 0 auto 24px;
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 20px 28px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 20px;
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+        }
+        .control-panel label {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #aaa;
+            white-space: nowrap;
+        }
+        .control-panel input[type="range"] {
+            -webkit-appearance: none;
+            width: 140px;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--accent2);
+            outline: none;
+            cursor: pointer;
+        }
+        .control-panel input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+            border: 2px solid #fff;
+            box-shadow: 0 0 10px rgba(233, 69, 96, 0.5);
+        }
+        .k-value {
+            display: inline-block;
+            min-width: 28px;
+            text-align: center;
+            font-weight: 700;
+            font-size: 1.2rem;
+            color: var(--accent);
+        }
+        .sample-info {
+            font-size: 0.8rem;
+            color: #666;
+            margin-left: auto;
+        }
+
+        .btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            letter-spacing: 0.5px;
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(233, 69, 96, 0.4);
+        }
+        .btn-primary:hover {
+            background: #ff5a75;
+            box-shadow: 0 6px 20px rgba(233, 69, 96, 0.6);
+            transform: translateY(-1px);
+        }
+        .btn-outline {
+            background: transparent;
+            color: var(--accent);
+            border: 2px solid var(--accent);
+        }
+        .btn-outline:hover {
+            background: rgba(233, 69, 96, 0.1);
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        /* 颜色空间选择器 */
+        .space-select {
+            padding: 8px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--accent2);
+            color: #e0e0e0;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.2s;
+            min-width: 100px;
+        }
+        .space-select:hover {
+            border-color: var(--accent);
+        }
+        .space-select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 8px rgba(233, 69, 96, 0.3);
+        }
+        .space-select option {
+            background: #16213e;
+            color: #e0e0e0;
+        }
+
+        /* 图表类型切换 Tab */
+        .chart-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            background: rgba(255,255,255,0.03);
+            border-radius: 10px;
+            padding: 4px;
+        }
+        .chart-tab {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 600;
+            background: transparent;
+            color: #888;
+            transition: all 0.25s ease;
+            white-space: nowrap;
+        }
+        .chart-tab:hover {
+            color: #ccc;
+            background: rgba(255,255,255,0.05);
+        }
+        .chart-tab.active {
+            background: var(--accent);
+            color: #fff;
+            box-shadow: 0 2px 10px rgba(233,69,96,0.4);
+        }
+
+        /* 图片选择区域 */
+        .image-selector {
+            max-width: 1100px;
+            margin: 0 auto 24px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .image-thumb {
+            width: 100px;
+            height: 70px;
+            border-radius: 10px;
+            overflow: hidden;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        .image-thumb:hover {
+            border-color: var(--accent);
+            transform: scale(1.05);
+        }
+        .image-thumb.active {
+            border-color: var(--accent);
+            box-shadow: 0 0 20px rgba(233, 69, 96, 0.5);
+        }
+        .image-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .image-thumb .label {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 0.7rem;
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            padding: 2px 0;
+        }
+
+        /* 上传 */
+        .upload-area {
+            max-width: 1100px;
+            margin: 0 auto 24px;
+            text-align: center;
+        }
+        .upload-area input {
+            display: none;
+        }
+        .upload-label {
+            display: inline-block;
+            padding: 10px 20px;
+            background: var(--accent2);
+            color: #ccc;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            border: 1px dashed #555;
+        }
+        .upload-label:hover {
+            border-color: var(--accent);
+            color: #fff;
+        }
+
+        /* 主内容区 */
+        .main-content {
+            max-width: 1100px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 20px;
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+        }
+        .card h3 {
+            font-size: 1rem;
+            margin-bottom: 14px;
+            color: #ccc;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card h3::before {
+            content: '';
+            display: inline-block;
+            width: 4px;
+            height: 18px;
+            background: var(--accent);
+            border-radius: 2px;
+        }
+        .chart-container {
+            width: 100%;
+            max-width: 750px;
+            margin: 0 auto;
+            height: 550px;
+        }
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        /* 颜色条 */
+        .color-palette {
+            display: flex;
+            border-radius: 10px;
+            overflow: hidden;
+            height: 50px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+        }
+        .color-palette .swatch {
+            flex: 1;
+            position: relative;
+            cursor: pointer;
+            transition: flex 0.3s;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            min-width: 30px;
+        }
+        .color-palette .swatch:hover {
+            flex: 2;
+        }
+        .color-palette .swatch .info {
+            font-size: 0.55rem;
+            color: #fff;
+            text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+            padding: 3px 4px;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        /* 状态提示 */
+        .status {
+            max-width: 1100px;
+            margin: 0 auto 16px;
+            text-align: center;
+        }
+        .status .msg {
+            display: inline-block;
+            padding: 8px 18px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            background: var(--accent2);
+            color: #aaa;
+        }
+        .status .msg.success {
+            background: #1a3a1a;
+            color: #4caf84;
+        }
+        .status .msg.info {
+            background: #1a2a3a;
+            color: #6ba3d6;
+        }
+
+        /* 统计数字 */
+        .stats-row {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+        .stat-item {
+            flex: 1;
+            min-width: 120px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 10px;
+            padding: 12px 16px;
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+        .stat-item .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .stat-item .stat-label {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 4px;
+        }
+
+        /* AI 颜色分析面板 */
+        .ai-panel {
+            max-width: 1100px;
+            margin: 20px auto;
+        }
+        .ai-config {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: flex-end;
+            margin-bottom: 14px;
+        }
+        .ai-config .field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .ai-config .field label {
+            font-size: 0.75rem;
+            color: #888;
+            font-weight: 600;
+        }
+        .ai-config input, .ai-config select {
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--accent2);
+            color: #e0e0e0;
+            font-size: 0.85rem;
+            outline: none;
+            transition: border-color 0.2s;
+            min-width: 140px;
+        }
+        .ai-config input:focus, .ai-config select:focus {
+            border-color: var(--accent);
+        }
+        .ai-config input::placeholder {
+            color: #555;
+        }
+        .ai-result {
+            background: rgba(255,255,255,0.02);
+            border-radius: 12px;
+            padding: 18px 22px;
+            border: 1px solid var(--border);
+            min-height: 60px;
+            line-height: 1.8;
+            font-size: 0.9rem;
+            color: #ccc;
+            display: none;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .ai-result.show {
+            display: block;
+        }
+        .ai-result .harmony-score {
+            display: inline-block;
+            font-size: 2rem;
+            font-weight: 700;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        .ai-result .score-excellent { color: #4caf84; }
+        .ai-result .score-good { color: #8bc34a; }
+        .ai-result .score-average { color: #ffa502; }
+        .ai-result .score-poor { color: #e94560; }
+        .ai-error {
+            color: #e94560;
+            background: rgba(233,69,96,0.08);
+            border: 1px solid rgba(233,69,96,0.2);
+        }
+        .btn-ai {
+            background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+            color: #fff;
+            border: none;
+            box-shadow: 0 4px 14px rgba(108,92,231,0.4);
+        }
+        .btn-ai:hover {
+            background: linear-gradient(135deg, #7d6ff0, #b5aefe);
+            box-shadow: 0 6px 20px rgba(108,92,231,0.6);
+            transform: translateY(-1px);
+        }
+        .btn-ai:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .ai-result .ai-loading {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: #888;
+            font-size: 0.85rem;
+            padding: 8px 0;
+        }
+        .ai-result .ai-spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(108,92,231,0.2);
+            border-top-color: #a29bfe;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        footer {
+            text-align: center;
+            padding: 24px;
+            color: #555;
+            font-size: 0.8rem;
+        }
+
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        .loading-overlay.show {
+            display: flex;
+        }
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+    </div>
+
+    <div class="header">
+        <h1>🎨 图片颜色聚类可视化</h1>
+        <p>基于 K-Means 算法的像素颜色聚类分析 | ECharts 可视化展示</p>
+    </div>
+
+    <!-- 控制面板 -->
+    <div class="control-panel">
+        <label for="kSlider">簇数量 K = <span class="k-value" id="kValue">7</span></label>
+        <input type="range" id="kSlider" min="2" max="16" value="7" step="1">
+
+        <label for="sampleRate">采样率: <span id="sampleRateLabel">5</span></label>
+        <input type="range" id="sampleRate" min="1" max="20" value="5" step="1">
+
+        <label for="colorSpace">颜色空间:</label>
+        <select class="space-select" id="colorSpace" onchange="onColorSpaceChange()">
+            <option value="RGB">RGB 空间</option>
+            <option value="LAB">LAB 空间（感知均匀）</option>
+        </select>
+
+        <button class="btn btn-primary" id="runBtn" onclick="runClustering()">🚀 运行聚类</button>
+
+        <span class="sample-info" id="sampleInfo"></span>
+    </div>
+
+    <!-- 图片选择 -->
+    <div class="image-selector" id="imageSelector"></div>
+    <div class="upload-area">
+        <input type="file" id="fileInput" accept="image/*" onchange="handleFileUpload(event)">
+        <label for="fileInput" class="upload-label">📁 或上传本地图片</label>
+    </div>
+
+    <!-- 状态 -->
+    <div class="status">
+        <span class="msg info" id="statusMsg">请选择一张图片开始分析</span>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="stats-row" id="statsRow" style="max-width:1100px;margin:0 auto 20px;"></div>
+
+    <!-- 主内容 -->
+    <div class="main-content">
+        <!-- 原始图 + 量化图 -->
+        <div class="card">
+            <h3>🖼️ 原始图片 &amp; 聚类还原图</h3>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <div style="text-align:center;">
+                    <canvas id="originalCanvas" style="width:100%;max-height:220px;border-radius:8px;object-fit:contain;background:#000;"></canvas>
+                    <div style="font-size:0.75rem;color:#888;margin-top:2px;">原始图片</div>
+                </div>
+                <div style="text-align:center;">
+                    <canvas id="quantizedCanvas" style="width:100%;max-height:220px;border-radius:8px;object-fit:contain;background:#000;"></canvas>
+                    <div style="font-size:0.75rem;color:#888;margin-top:2px;">K-Means 聚类还原</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 颜色条 + 图表切换 -->
+        <div class="card">
+            <h3>🎨 聚类颜色均值色板</h3>
+            <div class="color-palette" id="colorPalette"></div>
+            <div style="font-size:0.75rem;color:#666;text-align:center;margin-top:6px;">
+                色块宽度 ∝ 像素数量占比 | 悬停查看详情
+            </div>
+
+            <!-- 图表类型切换 Tab -->
+            <div class="chart-tabs" id="chartTabs">
+                <button class="chart-tab active" data-chart="bubble">🫧 气泡图</button>
+                <button class="chart-tab" data-chart="bar">📊 柱状图</button>
+                <button class="chart-tab" data-chart="pie">🍩 饼图</button>
+                <button class="chart-tab" data-chart="scatter">🌈 颜色散点图</button>
+                <button class="chart-tab" data-chart="treemap">🗺️ 矩形树图</button>
+            </div>
+            <div class="chart-container" id="mainChart"></div>
+        </div>
+    </div>
+
+    <!-- AI 颜色和谐度分析 -->
+    <div class="ai-panel">
+        <div class="card">
+            <h3>🤖 AI 颜色和谐度分析</h3>
+            <p style="font-size:0.75rem;color:#555;margin-bottom:10px;">需要本地运行 <code style="background:#222;padding:1px 6px;border-radius:3px;color:#a29bfe;">python server.py</code> 启动后端</p>
+            <div class="ai-config">
+                <button class="btn btn-ai" id="aiAnalyzeBtn" onclick="runAiAnalysis()" disabled>🔍 分析颜色和谐度</button>
+            </div>
+            <div class="ai-result" id="aiResult"></div>
+        </div>
+    </div>
+
+    <footer>
+        K-Means 聚类算法纯 JavaScript 实现 | 可视化库: ECharts | 数据可视化大作业
+    </footer>
+
+    <script>
+        // ==================== 全局状态 ====================
+        let currentImageData = null;
+        let clusterResult = null;
+        let currentImageSrc = null;
+        let currentColorSpace = 'RGB';   // 'RGB' | 'LAB'
+        let currentChartType = 'bubble'; // 当前选中的图表类型
+
+        // ECharts 单实例
+        let mainChartInst = null;
+
+        // ==================== 颜色空间转换：RGB ↔ LAB ====================
+        // 参考：D65 标准光源
+
+        function rgbToLab(r, g, b) {
+            // Step 1: sRGB → 线性 RGB（Gamma 校正）
+            let rr = r / 255, gg = g / 255, bb = b / 255;
+            rr = rr > 0.04045 ? Math.pow((rr + 0.055) / 1.055, 2.4) : rr / 12.92;
+            gg = gg > 0.04045 ? Math.pow((gg + 0.055) / 1.055, 2.4) : gg / 12.92;
+            bb = bb > 0.04045 ? Math.pow((bb + 0.055) / 1.055, 2.4) : bb / 12.92;
+
+            // Step 2: 线性 RGB → XYZ（D65）
+            const x = rr * 0.4124564 + gg * 0.3575761 + bb * 0.1804375;
+            const y = rr * 0.2126729 + gg * 0.7151522 + bb * 0.0721750;
+            const z = rr * 0.0193339 + gg * 0.1191920 + bb * 0.9503041;
+
+            // Step 3: XYZ → LAB（D65 参考白点）
+            const xn = 0.95047, yn = 1.00000, zn = 1.08883;
+            const fx = fLab(x / xn);
+            const fy = fLab(y / yn);
+            const fz = fLab(z / zn);
+
+            const L = 116 * fy - 16;
+            const A = 500 * (fx - fy);
+            const B = 200 * (fy - fz);
+
+            return [L, A, B];
+        }
+
+        function labToRgb(L, A, B) {
+            // Step 1: LAB → XYZ
+            const xn = 0.95047, yn = 1.00000, zn = 1.08883;
+            const fy = (L + 16) / 116;
+            const fx = A / 500 + fy;
+            const fz = fy - B / 200;
+
+            const x = xn * fLabInv(fx);
+            const y = yn * fLabInv(fy);
+            const z = zn * fLabInv(fz);
+
+            // Step 2: XYZ → 线性 RGB
+            let rr = x *  3.2404542 + y * -1.5371385 + z * -0.4985314;
+            let gg = x * -0.9692660 + y *  1.8760108 + z *  0.0415560;
+            let bb = x *  0.0556434 + y * -0.2040259 + z *  1.0572252;
+
+            // Step 3: 线性 RGB → sRGB（Gamma 校正）
+            rr = rr > 0.0031308 ? 1.055 * Math.pow(rr, 1 / 2.4) - 0.055 : 12.92 * rr;
+            gg = gg > 0.0031308 ? 1.055 * Math.pow(gg, 1 / 2.4) - 0.055 : 12.92 * gg;
+            bb = bb > 0.0031308 ? 1.055 * Math.pow(bb, 1 / 2.4) - 0.055 : 12.92 * bb;
+
+            // 裁剪到 [0, 255]
+            const clamp = v => Math.max(0, Math.min(255, Math.round(v * 255)));
+            return [clamp(rr), clamp(gg), clamp(bb)];
+        }
+
+        function fLab(t) {
+            const delta = 6 / 29;
+            return t > delta * delta * delta
+                ? Math.cbrt(t)
+                : t / (3 * delta * delta) + 4 / 29;
+        }
+
+        function fLabInv(t) {
+            const delta = 6 / 29;
+            return t > delta
+                ? t * t * t
+                : 3 * delta * delta * (t - 4 / 29);
+        }
+
+        function convertPixelsToColorSpace(rgbData) {
+            if (currentColorSpace === 'LAB') {
+                return rgbData.map(([r, g, b]) => rgbToLab(r, g, b));
+            }
+            return rgbData; // RGB 直接返回
+        }
+
+        function convertCentroidsToRgb(centroids) {
+            if (currentColorSpace === 'LAB') {
+                return centroids.map(([L, A, B]) => labToRgb(L, A, B));
+            }
+            return centroids; // 已经是 RGB
+        }
+
+        // ==================== K-Means 聚类算法（自实现） ====================
+        /**
+         * K-Means 聚类算法（K-Means++ 初始化 + Lloyd 迭代）
+         * @param {Array<Array<number>>} data - 数据点，3维 [c1, c2, c3]
+         * @param {number} k - 簇数量
+         * @param {number} maxIterations - 最大迭代次数
+         * @returns {{ centroids: Array, labels: Array<number>, iterations: number }}
+         */
+        function kMeans(data, k, maxIterations = 50) {
+            const n = data.length;
+            const dim = data[0].length; // 应为 3 (RGB)
+
+            if (k > n) {
+                console.warn('K 不能大于数据点数量，已将 K 设为数据点数量');
+                k = n;
+            }
+            if (k < 1) k = 1;
+
+            // ---- Step 1: K-Means++ 初始化质心 ----
+            const centroids = [];
+            // 随机选择第一个质心
+            const firstIdx = Math.floor(Math.random() * n);
+            centroids.push([...data[firstIdx]]);
+
+            // 对于剩余的 k-1 个质心，使用概率加权选择
+            for (let c = 1; c < k; c++) {
+                const distances = new Array(n).fill(Infinity);
+                // 计算每个点到最近质心的距离平方
+                for (let i = 0; i < n; i++) {
+                    for (let j = 0; j < centroids.length; j++) {
+                        const d = squaredDistance(data[i], centroids[j]);
+                        if (d < distances[i]) distances[i] = d;
+                    }
+                }
+                // 按距离平方的比例随机选择下一个质心
+                const totalDist = distances.reduce((a, b) => a + b, 0);
+                if (totalDist === 0) {
+                    // 所有点与某个质心重合，随机选
+                    centroids.push([...data[Math.floor(Math.random() * n)]]);
+                    continue;
+                }
+                let r = Math.random() * totalDist;
+                let cumulative = 0;
+                let chosenIdx = n - 1;
+                for (let i = 0; i < n; i++) {
+                    cumulative += distances[i];
+                    if (cumulative >= r) {
+                        chosenIdx = i;
+                        break;
+                    }
+                }
+                centroids.push([...data[chosenIdx]]);
+            }
+
+            // ---- Step 2: 迭代优化 ----
+            const labels = new Array(n).fill(0);
+            let iterations = 0;
+            let changed = true;
+
+            while (changed && iterations < maxIterations) {
+                changed = false;
+                iterations++;
+
+                // 分配：将每个点分配给最近的质心
+                for (let i = 0; i < n; i++) {
+                    let minDist = Infinity;
+                    let bestLabel = 0;
+                    for (let j = 0; j < k; j++) {
+                        const d = squaredDistance(data[i], centroids[j]);
+                        if (d < minDist) {
+                            minDist = d;
+                            bestLabel = j;
+                        }
+                    }
+                    if (labels[i] !== bestLabel) {
+                        labels[i] = bestLabel;
+                        changed = true;
+                    }
+                }
+
+                // 更新：重新计算每个簇的质心（均值）
+                const sums = new Array(k).fill(null).map(() => new Array(dim).fill(0));
+                const counts = new Array(k).fill(0);
+
+                for (let i = 0; i < n; i++) {
+                    const label = labels[i];
+                    counts[label]++;
+                    for (let d = 0; d < dim; d++) {
+                        sums[label][d] += data[i][d];
+                    }
+                }
+
+                for (let j = 0; j < k; j++) {
+                    if (counts[j] > 0) {
+                        for (let d = 0; d < dim; d++) {
+                            centroids[j][d] = sums[j][d] / counts[j];
+                        }
+                    }
+                }
+            }
+
+            return {
+                centroids,
+                labels,
+                iterations,
+            };
+        }
+
+        function squaredDistance(a, b) {
+            let sum = 0;
+            for (let i = 0; i < a.length; i++) {
+                sum += (a[i] - b[i]) * (a[i] - b[i]);
+            }
+            return sum;
+        }
+
+        // ==================== 图片处理 ====================
+        function loadImage(src) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                // 仅对 http/https 远程资源设置 crossOrigin，本地文件和 data URL 不需要
+                if (src.startsWith('http://') || src.startsWith('https://')) {
+                    img.crossOrigin = 'anonymous';
+                }
+                img.onload = () => resolve(img);
+                img.onerror = () => reject(new Error('无法加载图片: ' + src));
+                img.src = src;
+            });
+        }
+
+        function extractPixels(img, sampleRate = 1) {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            const imageData = ctx.getImageData(0, 0, img.width, img.height);
+            const pixels = imageData.data; // Uint8ClampedArray [r,g,b,a, r,g,b,a, ...]
+
+            const data = [];
+            const positions = []; // 记录像素在原图中的位置，用于还原
+
+            for (let y = 0; y < img.height; y += sampleRate) {
+                for (let x = 0; x < img.width; x += sampleRate) {
+                    const idx = (y * img.width + x) * 4;
+                    const r = pixels[idx];
+                    const g = pixels[idx + 1];
+                    const b = pixels[idx + 2];
+                    // 跳过透明像素
+                    const a = pixels[idx + 3];
+                    if (a < 128) continue;
+                    data.push([r, g, b]);
+                    positions.push({ x, y });
+                }
+            }
+
+            return { data, positions, width: img.width, height: img.height, imageData, fullData: pixels };
+        }
+
+        function drawQuantizedImage(canvas, img, labels, rawCentroids, positions, sampleRate) {
+            // 将质心转换为 RGB（用于绘制）
+            const rgbCentroids = convertCentroidsToRgb(rawCentroids);
+            const w = img.width;
+            const h = img.height;
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            const newImageData = ctx.createImageData(w, h);
+            const newPixels = newImageData.data;
+
+            for (let i = 0; i < newPixels.length; i += 4) {
+                newPixels[i] = 0;
+                newPixels[i + 1] = 0;
+                newPixels[i + 2] = 0;
+                newPixels[i + 3] = 255;
+            }
+
+            for (let i = 0; i < labels.length; i++) {
+                const pos = positions[i];
+                const centroid = rgbCentroids[labels[i]];
+                const idx = (pos.y * w + pos.x) * 4;
+                for (let dy = 0; dy < sampleRate && (pos.y + dy) < h; dy++) {
+                    for (let dx = 0; dx < sampleRate && (pos.x + dx) < w; dx++) {
+                        const bidx = ((pos.y + dy) * w + (pos.x + dx)) * 4;
+                        newPixels[bidx] = Math.round(centroid[0]);
+                        newPixels[bidx + 1] = Math.round(centroid[1]);
+                        newPixels[bidx + 2] = Math.round(centroid[2]);
+                        newPixels[bidx + 3] = 255;
+                    }
+                }
+            }
+            ctx.putImageData(newImageData, 0, 0);
+        }
+
+        function drawOriginalImage(canvas, img) {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+        }
+
+        // ==================== 聚类结果统计 ====================
+        function computeClusterStats(labels, rawCentroids, rgbCentroidsOverride) {
+            const k = rawCentroids.length;
+            const counts = new Array(k).fill(0);
+            for (const label of labels) {
+                counts[label]++;
+            }
+            const total = labels.length;
+
+            // 如果提供了 RGB 重写（LAB→RGB转换后），使用它；否则原始就是 RGB
+            const rgbCentroids = rgbCentroidsOverride || rawCentroids;
+
+            const stats = [];
+            for (let i = 0; i < k; i++) {
+                const rgb = rgbCentroids[i];
+                const hex = rgbToHex(Math.round(rgb[0]), Math.round(rgb[1]), Math.round(rgb[2]));
+                stats.push({
+                    id: i,
+                    rawCentroid: rawCentroids[i],  // 原始聚类空间中的质心（可能是LAB）
+                    rgbCentroid: [Math.round(rgb[0]), Math.round(rgb[1]), Math.round(rgb[2])],
+                    centroid: rgb,  // 兼容旧代码
+                    count: counts[i],
+                    percentage: total > 0 ? (counts[i] / total * 100) : 0,
+                    hex: hex,
+                });
+            }
+            stats.sort((a, b) => b.count - a.count);
+            return { stats, total };
+        }
+
+        function rgbToHex(r, g, b) {
+            return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
+        }
+
+        function hexToRgb(hex) {
+            const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [0, 0, 0];
+        }
+
+        // ==================== ECharts 可视化 ====================
+        function initCharts() {
+            const dom = document.getElementById('mainChart');
+            if (!dom) return;
+            if (mainChartInst) mainChartInst.dispose();
+            mainChartInst = echarts.init(dom);
+
+            window.addEventListener('resize', () => {
+                mainChartInst && mainChartInst.resize();
+            });
+        }
+
+        function getSortedStats(stats) {
+            return [...stats].sort((a, b) => a.id - b.id);
+        }
+
+        // ---- 气泡图 ----
+        function renderBubbleChart(stats, total) {
+            if (!mainChartInst) return;
+            const sorted = getSortedStats(stats);
+
+            mainChartInst.setOption({
+                backgroundColor: 'transparent',
+                title: { text: '聚类气泡图', subtext: '气泡大小 ∝ 像素数量 | 颜色 = 聚类均值色', left: 'center', top: 5, textStyle: { color: '#ccc', fontSize: 13 }, subtextStyle: { color: '#777', fontSize: 10 } },
+                tooltip: {
+                    trigger: 'item', backgroundColor: 'rgba(20,20,40,0.95)', borderColor: '#444', textStyle: { color: '#eee', fontSize: 12 },
+                    formatter: p => {
+                        const s = sorted[p.dataIndex];
+                        return `<div style="display:flex;align-items:center;gap:8px;"><span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:${s.hex};border:1px solid #fff;"></span><b>簇 ${s.id}</b></div><div style="margin-top:6px;line-height:1.6;">颜色: <span style="color:${s.hex};">${s.hex}</span><br/>RGB: (${s.rgbCentroid.join(', ')})<br/>像素数: <b>${s.count.toLocaleString()}</b><br/>占比: <b>${s.percentage.toFixed(1)}%</b></div>`;
+                    }
+                },
+                grid: { left: 50, right: 30, top: 60, bottom: 110, containLabel: true },
+                xAxis: { type: 'category', data: sorted.map(s => '簇 ' + s.id), name: '簇编号', nameGap: 55, nameTextStyle: { color: '#ddd', fontSize: 13, fontWeight: 'bold' }, nameLocation: 'middle', axisLabel: { color: '#aaa' }, axisLine: { lineStyle: { color: '#333' } } },
+                yAxis: { type: 'value', name: '像素占比 (%)', nameGap: 50, nameTextStyle: { color: '#ddd', fontSize: 13, fontWeight: 'bold' }, nameLocation: 'middle', axisLabel: { color: '#aaa', formatter: '{value}%' }, axisLine: { lineStyle: { color: '#333' } }, splitLine: { lineStyle: { color: '#222' } } },
+                series: [{
+                    type: 'scatter',
+                    symbolSize: data => 20 + (data[2] / total) * 250,
+                    data: sorted.map(s => [s.id, parseFloat(s.percentage.toFixed(1)), s.count]),
+                    itemStyle: { color: p => sorted[p.dataIndex].hex, borderColor: '#fff', borderWidth: 1.5, shadowBlur: 12, shadowColor: 'rgba(0,0,0,0.4)' },
+                    label: { show: true, formatter: p => sorted[p.dataIndex].percentage.toFixed(1) + '%', color: '#fff', fontSize: 10, textShadowColor: 'rgba(0,0,0,0.8)', textShadowBlur: 4 },
+                    emphasis: { scale: 1.3, itemStyle: { shadowBlur: 20, shadowColor: 'rgba(255,255,255,0.3)' } }
+                }]
+            }, true);
+        }
+
+        // ---- 柱状图 ----
+        function renderBarChart(stats) {
+            if (!mainChartInst) return;
+            const sorted = getSortedStats(stats);
+
+            mainChartInst.setOption({
+                backgroundColor: 'transparent',
+                title: { text: '各簇像素数量对比', left: 'center', top: 5, textStyle: { color: '#ccc', fontSize: 13 } },
+                tooltip: {
+                    trigger: 'axis', backgroundColor: 'rgba(20,20,40,0.95)', borderColor: '#444', textStyle: { color: '#eee', fontSize: 12 },
+                    formatter: params => {
+                        const s = sorted[params[0].dataIndex];
+                        return `<div style="display:flex;align-items:center;gap:8px;"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${s.hex};"></span><b>簇 ${s.id}</b></div><div style="margin-top:4px;">像素数: <b>${s.count.toLocaleString()}</b><br/>占比: ${s.percentage.toFixed(1)}%<br/>颜色: ${s.hex}</div>`;
+                    }
+                },
+                grid: { left: 95, right: 40, top: 50, bottom: 130, containLabel: true },
+                xAxis: { type: 'category', data: sorted.map(s => '簇 ' + s.id), name: '簇编号', nameGap: 60, nameTextStyle: { color: '#ddd', fontSize: 13, fontWeight: 'bold' }, nameLocation: 'middle', axisLabel: { color: '#aaa' }, axisLine: { lineStyle: { color: '#333' } } },
+                yAxis: { type: 'value', name: '像素数量', nameGap: 50, nameTextStyle: { color: '#ddd', fontSize: 13, fontWeight: 'bold' }, nameLocation: 'middle', axisLabel: { color: '#aaa', formatter: v => v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(1) + 'K' : v }, axisLine: { lineStyle: { color: '#333' } }, splitLine: { lineStyle: { color: '#222' } } },
+                series: [{
+                    type: 'bar',
+                    data: sorted.map(s => ({ value: s.count, itemStyle: { color: s.hex, borderRadius: [6, 6, 0, 0], shadowBlur: 8, shadowColor: 'rgba(0,0,0,0.5)' } })),
+                    label: { show: true, position: 'top', color: '#ccc', fontSize: 10, formatter: p => sorted[p.dataIndex].percentage.toFixed(1) + '%' },
+                    emphasis: { itemStyle: { shadowBlur: 16, shadowColor: 'rgba(255,255,255,0.2)' } },
+                    barMaxWidth: 60
+                }]
+            }, true);
+        }
+
+        // ---- 饼图（环形） ----
+        function renderPieChart(stats) {
+            if (!mainChartInst) return;
+            const sorted = getSortedStats(stats);
+
+            mainChartInst.setOption({
+                backgroundColor: 'transparent',
+                title: { text: '各簇像素占比分布', left: 'center', top: 5, textStyle: { color: '#ccc', fontSize: 13 } },
+                tooltip: {
+                    trigger: 'item', backgroundColor: 'rgba(20,20,40,0.95)', borderColor: '#444', textStyle: { color: '#eee', fontSize: 12 },
+                    formatter: p => `<div style="display:flex;align-items:center;gap:8px;"><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${p.color};"></span><b>簇 ${p.dataIndex}</b></div><div style="margin-top:4px;">像素数: <b>${p.value.toLocaleString()}</b><br/>占比: <b>${p.percent}%</b></div>`
+                },
+                legend: { orient: 'vertical', right: 10, top: 40, textStyle: { color: '#aaa', fontSize: 11 } },
+                series: [{
+                    type: 'pie',
+                    radius: ['40%', '72%'],
+                    center: ['42%', '55%'],
+                    avoidLabelOverlap: false,
+                    itemStyle: { borderRadius: 6, borderColor: '#1a1a2e', borderWidth: 3 },
+                    label: { show: true, position: 'outside', color: '#ccc', fontSize: 10, formatter: '{b}\n{d}%' },
+                    emphasis: { label: { fontSize: 14, fontWeight: 'bold' }, scaleSize: 12 },
+                    data: sorted.map((s, i) => ({
+                        value: s.count,
+                        name: '簇 ' + s.id,
+                        itemStyle: { color: s.hex }
+                    }))
+                }]
+            }, true);
+        }
+
+        // ---- 颜色散点图（RGB 或 LAB 空间） ----
+        function renderScatterChart(stats) {
+            if (!mainChartInst) return;
+            const sorted = getSortedStats(stats);
+            const isLab = currentColorSpace === 'LAB';
+            const xLabel = isLab ? 'A（绿-红轴）' : 'R（红色通道）';
+            const yLabel = isLab ? 'B（蓝-黄轴）' : 'G（绿色通道）';
+            const xIdx = isLab ? 1 : 0; // LAB: A通道, RGB: R通道
+            const yIdx = isLab ? 2 : 1; // LAB: B通道, RGB: G通道
+
+            const xs = sorted.map(s => s.rawCentroid[xIdx]);
+            const ys = sorted.map(s => s.rawCentroid[yIdx]);
+
+            mainChartInst.setOption({
+                backgroundColor: 'transparent',
+                title: { text: `聚类中心在 ${currentColorSpace} 空间的分布`, subtext: `X=${xLabel} | Y=${yLabel} | 大小∝像素数量`, left: 'center', top: 5, textStyle: { color: '#ccc', fontSize: 13 }, subtextStyle: { color: '#777', fontSize: 10 } },
+                tooltip: {
+                    trigger: 'item', backgroundColor: 'rgba(20,20,40,0.95)', borderColor: '#444', textStyle: { color: '#eee', fontSize: 12 },
+                    formatter: p => {
+                        const s = sorted[p.dataIndex];
+                        return `<div style="display:flex;align-items:center;gap:8px;"><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${s.hex};"></span><b>簇 ${s.id}</b></div><div style="margin-top:4px;line-height:1.6;">颜色: ${s.hex}<br/>RGB: (${s.rgbCentroid.join(', ')})<br/>${currentColorSpace}: (${s.rawCentroid.map(v=>v.toFixed(1)).join(', ')})<br/>像素: <b>${s.count.toLocaleString()}</b> (${s.percentage.toFixed(1)}%)</div>`;
+                    }
+                },
+                grid: { left: 65, right: 30, top: 60, bottom: 110, containLabel: true },
+                xAxis: { type: 'value', name: xLabel, nameGap: 55, nameTextStyle: { color: '#ddd', fontSize: 13, fontWeight: 'bold' }, nameLocation: 'middle', axisLabel: { color: '#aaa' }, axisLine: { lineStyle: { color: '#333' } }, splitLine: { lineStyle: { color: '#222' } } },
+                yAxis: { type: 'value', name: yLabel, nameGap: 50, nameTextStyle: { color: '#ddd', fontSize: 13, fontWeight: 'bold' }, nameLocation: 'middle', axisLabel: { color: '#aaa' }, axisLine: { lineStyle: { color: '#333' } }, splitLine: { lineStyle: { color: '#222' } } },
+                series: [{
+                    type: 'scatter',
+                    symbolSize: data => 15 + Math.sqrt(data[2] / Math.max(...sorted.map(s=>s.count))) * 50,
+                    data: sorted.map(s => [s.rawCentroid[xIdx], s.rawCentroid[yIdx], s.count]),
+                    itemStyle: { color: p => sorted[p.dataIndex].hex, borderColor: '#fff', borderWidth: 2, shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.5)' },
+                    label: { show: true, formatter: p => '簇' + sorted[p.dataIndex].id, color: '#fff', fontSize: 10, position: 'top', distance: 8, textShadowColor: 'rgba(0,0,0,0.8)', textShadowBlur: 4 },
+                    emphasis: { scale: 1.4, itemStyle: { shadowBlur: 20, shadowColor: 'rgba(255,255,255,0.4)' } },
+                    markLine: !isLab ? { silent: true, symbol: 'none', lineStyle: { color: '#333', type: 'dashed' }, data: [{ xAxis: 128, label: { formatter: '128', color: '#555' } }, { yAxis: 128, label: { formatter: '128', color: '#555' } }] } : undefined
+                }]
+            }, true);
+        }
+
+        // ---- 矩形树图 ----
+        function renderTreemapChart(stats) {
+            if (!mainChartInst) return;
+            const sorted = getSortedStats(stats);
+
+            mainChartInst.setOption({
+                backgroundColor: 'transparent',
+                title: { text: '聚类矩形树图', subtext: '面积 ∝ 像素数量 | 颜色 = 聚类均值色', left: 'center', top: 5, textStyle: { color: '#ccc', fontSize: 13 }, subtextStyle: { color: '#777', fontSize: 10 } },
+                tooltip: {
+                    trigger: 'item', backgroundColor: 'rgba(20,20,40,0.95)', borderColor: '#444', textStyle: { color: '#eee', fontSize: 12 },
+                    formatter: p => {
+                        const s = sorted.find(st => st.id === p.data.clusterId);
+                        if (!s) return p.name;
+                        return `<div style="display:flex;align-items:center;gap:8px;"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${s.hex};"></span><b>簇 ${s.id}</b></div><div style="margin-top:4px;">颜色: ${s.hex}<br/>RGB: (${s.rgbCentroid.join(', ')})<br/>像素: <b>${s.count.toLocaleString()}</b><br/>占比: <b>${s.percentage.toFixed(1)}%</b></div>`;
+                    }
+                },
+                series: [{
+                    type: 'treemap',
+                    roam: false,
+                    nodeClick: false,
+                    breadcrumb: { show: false },
+                    label: { show: true, color: '#fff', fontSize: 12, fontWeight: 'bold', formatter: p => p.name + '\n' + (sorted.find(s => s.id === p.data.clusterId)?.percentage.toFixed(1) ?? '') + '%', textShadowColor: 'rgba(0,0,0,0.7)', textShadowBlur: 3 },
+                    upperLabel: { show: true, height: 28, color: '#aaa', fontSize: 11 },
+                    itemStyle: { borderColor: '#1a1a2e', borderWidth: 3, borderRadius: 4, gapWidth: 3 },
+                    emphasis: { itemStyle: { borderColor: '#fff', borderWidth: 2, shadowBlur: 16, shadowColor: 'rgba(255,255,255,0.3)' } },
+                    levels: [{ itemStyle: { borderWidth: 0, gapWidth: 4 }, upperLabel: { show: false } }],
+                    data: sorted.map(s => ({
+                        value: s.count,
+                        name: '簇 ' + s.id,
+                        clusterId: s.id,
+                        itemStyle: { color: s.hex }
+                    }))
+                }]
+            }, true);
+        }
+
+        // ---- 图表切换 ----
+        function switchChart(type) {
+            currentChartType = type;
+            if (!clusterResult) return;
+
+            const labels = clusterResult.labels;
+            const rawCentroids = clusterResult.centroids;
+            const rgbCentroids = convertCentroidsToRgb(rawCentroids);
+            const { stats, total } = computeClusterStats(labels, rawCentroids, rgbCentroids);
+
+            switch (type) {
+                case 'bubble': renderBubbleChart(stats, total); break;
+                case 'bar': renderBarChart(stats); break;
+                case 'pie': renderPieChart(stats); break;
+                case 'scatter': renderScatterChart(stats); break;
+                case 'treemap': renderTreemapChart(stats); break;
+            }
+
+            // 更新 tab 激活状态
+            document.querySelectorAll('.chart-tab').forEach(t => t.classList.remove('active'));
+            const activeTab = document.querySelector(`.chart-tab[data-chart="${type}"]`);
+            if (activeTab) activeTab.classList.add('active');
+        }
+
+        // ---- Tab 点击事件（在初始化时绑定） ----
+        function bindChartTabs() {
+            document.querySelectorAll('.chart-tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    switchChart(this.getAttribute('data-chart'));
+                });
+            });
+        }
+
+        function renderColorPalette(stats, total) {
+            const palette = document.getElementById('colorPalette');
+            const sortedStats = [...stats].sort((a, b) => a.id - b.id);
+
+            palette.innerHTML = sortedStats.map(s => {
+                const [r, g, b] = s.rgbCentroid;
+                const textColor = getContrastColor(r, g, b);
+                return `
+                    <div class="swatch"
+                         style="background:${s.hex};flex:${s.count};color:${textColor};"
+                         title="簇 ${s.id}: ${s.hex} | ${s.count.toLocaleString()} 像素 (${s.percentage.toFixed(1)}%)">
+                        <span class="info">${s.percentage.toFixed(1)}%</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getContrastColor(r, g, b) {
+            // 计算相对亮度
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            return luminance > 0.5 ? '#1a1a2e' : '#ffffff';
+        }
+
+        function renderStats(stats, total, k, iterations, colorSpace) {
+            const container = document.getElementById('statsRow');
+            const sortedStats = [...stats].sort((a, b) => b.count - a.count);
+            const dominant = sortedStats[0];
+
+            container.innerHTML = `
+                <div class="stat-item">
+                    <div class="stat-value">${colorSpace}</div>
+                    <div class="stat-label">聚类颜色空间</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${k}</div>
+                    <div class="stat-label">簇数量 K</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${iterations}</div>
+                    <div class="stat-label">收敛迭代次数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${total.toLocaleString()}</div>
+                    <div class="stat-label">采样像素总数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" style="color:${dominant.hex};">
+                        <span style="display:inline-block;width:16px;height:16px;border-radius:4px;background:${dominant.hex};vertical-align:middle;margin-right:4px;"></span>
+                        ${dominant.percentage.toFixed(1)}%
+                    </div>
+                    <div class="stat-label">最大簇占比 (${dominant.hex})</div>
+                </div>
+            `;
+        }
+
+        function setStatus(msg, type) {
+            const el = document.getElementById('statusMsg');
+            el.textContent = msg;
+            el.className = 'msg ' + (type || 'info');
+        }
+
+        function showLoading(show) {
+            document.getElementById('loadingOverlay').classList.toggle('show', show);
+        }
+
+        // ==================== 主流程 ====================
+        async function runClustering() {
+            if (!currentImageData) {
+                setStatus('⚠️ 请先选择一张图片', '');
+                return;
+            }
+
+            const k = parseInt(document.getElementById('kSlider').value);
+            const sampleRate = parseInt(document.getElementById('sampleRate').value);
+            currentColorSpace = document.getElementById('colorSpace').value;
+
+            showLoading(true);
+            setStatus(`⏳ 正在 ${currentColorSpace} 空间中执行 K-Means 聚类...`, 'info');
+
+            await new Promise(r => setTimeout(r, 50));
+
+            try {
+                const img = await loadImage(currentImageSrc);
+                const { data, positions, width, height, imageData, fullData } = extractPixels(img, sampleRate);
+
+                if (data.length === 0) {
+                    setStatus('❌ 未能从图片中提取到有效像素', '');
+                    showLoading(false);
+                    return;
+                }
+
+                document.getElementById('sampleInfo').textContent =
+                    `采样 ${data.length.toLocaleString()} 个像素 (共 ${width}×${height}=${(width*height).toLocaleString()} 像素)`;
+
+                // ---- 颜色空间转换 ----
+                const clusteringData = convertPixelsToColorSpace(data);
+
+                // ---- 执行 K-Means ----
+                const effectiveK = Math.min(k, clusteringData.length);
+                const t0 = performance.now();
+                const result = kMeans(clusteringData, effectiveK, 50);
+                const t1 = performance.now();
+                const elapsed = (t1 - t0).toFixed(0);
+
+                // ---- 保存结果（质心保持原始空间值） ----
+                clusterResult = { ...result, positions, img, sampleRate, imageData };
+
+                // ---- 转换为 RGB 用于显示 ----
+                const rgbCentroids = convertCentroidsToRgb(result.centroids);
+
+                // ---- 统计 ----
+                const { stats, total } = computeClusterStats(result.labels, result.centroids, rgbCentroids);
+
+                // ---- 渲染 ----
+                const originalCanvas = document.getElementById('originalCanvas');
+                drawOriginalImage(originalCanvas, img);
+
+                const quantizedCanvas = document.getElementById('quantizedCanvas');
+                drawQuantizedImage(quantizedCanvas, img, result.labels, result.centroids, positions, sampleRate);
+
+                renderStats(stats, total, effectiveK, result.iterations, currentColorSpace);
+                renderColorPalette(stats, total);
+
+                // 初始化图表并渲染当前选中类型
+                initCharts();
+                switchChart(currentChartType);
+
+                setStatus(
+                    `✅ 聚类完成！空间=${currentColorSpace} | K=${effectiveK} | 迭代 ${result.iterations} 次 | 耗时 ${elapsed}ms`,
+                    'success'
+                );
+                updateAiButtonState();
+            } catch (err) {
+                console.error(err);
+                setStatus('❌ 聚类失败: ' + err.message, '');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // ==================== 颜色空间切换 ====================
+        function onColorSpaceChange() {
+            if (currentImageData) {
+                runClustering();
+            }
+        }
+
+        // ==================== AI 颜色和谐度分析 ====================
+        function updateAiButtonState() {
+            const btn = document.getElementById('aiAnalyzeBtn');
+            // 有聚类结果即可启用（API Key 由后端管理）
+            btn.disabled = !clusterResult;
+        }
+
+        /**
+         * 调用后端 /api/analyze 进行颜色和谐度分析
+         */
+        async function runAiAnalysis() {
+            if (!clusterResult) {
+                setStatus('⚠️ 请先运行聚类分析', '');
+                return;
+            }
+
+            const model = 'deepseek-flash';
+            const btn = document.getElementById('aiAnalyzeBtn');
+            const resultDiv = document.getElementById('aiResult');
+
+            btn.disabled = true;
+            btn.textContent = '⏳ 正在分析...';
+            resultDiv.classList.remove('show', 'ai-error');
+            resultDiv.innerHTML = '<div class="ai-loading"><div class="ai-spinner"></div>AI 正在分析颜色和谐度，请稍候...</div>';
+            resultDiv.classList.add('show');
+            setStatus('🤖 正在调用 AI 分析颜色和谐度...', 'info');
+
+            try {
+                // 收集当前聚类颜色数据
+                const labels = clusterResult.labels;
+                const rawCentroids = clusterResult.centroids;
+                const rgbCentroids = convertCentroidsToRgb(rawCentroids);
+                const { stats } = computeClusterStats(labels, rawCentroids, rgbCentroids);
+                const sorted = [...stats].sort((a, b) => a.id - b.id);
+
+                const colors = sorted.map(s => ({
+                    id: s.id,
+                    hex: s.hex,
+                    rgb: s.rgbCentroid,
+                    percentage: parseFloat(s.percentage.toFixed(1)),
+                }));
+
+                // 调用后端 API
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        colors: colors,
+                        colorSpace: currentColorSpace,
+                        model: model,
+                    }),
+                });
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || '后端返回错误');
+                }
+
+                // 渲染结果
+                resultDiv.innerHTML = formatAiResult(data.content);
+                resultDiv.classList.add('show');
+                setStatus('✅ AI 分析完成！', 'success');
+
+            } catch (err) {
+                console.error('AI 分析失败:', err);
+                // 判断是否为网络/连接错误（后端未启动或部署在静态站点）
+                const isNetworkError = err instanceof TypeError ||
+                    err.message.includes('Failed to fetch') ||
+                    err.message.includes('NetworkError');
+                if (isNetworkError) {
+                    resultDiv.innerHTML = `
+                        <div style="text-align:center;padding:16px;">
+                            <div style="font-size:1.5rem;margin-bottom:8px;">🔌</div>
+                            <p style="color:#aaa;margin:0;">后端服务未连接</p>
+                            <p style="color:#666;font-size:0.8rem;margin:6px 0 0;">
+                                此功能需要本地运行 <code style="background:#222;padding:2px 8px;border-radius:4px;color:#a29bfe;">python server.py</code>
+                            </p>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.textContent = '❌ ' + err.message;
+                }
+                resultDiv.classList.add('show', isNetworkError ? '' : 'ai-error');
+                setStatus(isNetworkError ? '💡 AI 分析需本地后端支持' : '❌ AI 分析失败: ' + err.message, '');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔍 分析颜色和谐度';
+                updateAiButtonState();
+            }
+        }
+
+        /**
+         * 格式化 AI 返回结果，高亮评分
+         */
+        function formatAiResult(content) {
+            // 提取评分并添加样式
+            const scoreMatch = content.match(/(\d{1,3})\s*\/\s*100/);
+            let formatted = content
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            // 高亮评分行
+            if (scoreMatch) {
+                const score = parseInt(scoreMatch[1]);
+                let scoreClass = 'score-poor';
+                if (score >= 80) scoreClass = 'score-excellent';
+                else if (score >= 65) scoreClass = 'score-good';
+                else if (score >= 45) scoreClass = 'score-average';
+
+                formatted = formatted.replace(
+                    new RegExp(`(${scoreMatch[0]})`),
+                    `<span class="harmony-score ${scoreClass}">$1</span>`
+                );
+            }
+
+            // Markdown 风格的标题转换
+            formatted = formatted
+                .replace(/^### (.+)$/gm, '<h4 style="color:#ccc;margin:12px 0 6px;font-size:1rem;">$1</h4>')
+                .replace(/^## (.+)$/gm, '<h3 style="color:#e0e0e0;margin:14px 0 8px;font-size:1.1rem;">$1</h3>')
+                .replace(/^- (.+)$/gm, '<span style="display:block;padding-left:12px;margin:2px 0;">• $1</span>')
+                .replace(/\*\*(.+?)\*\*/g, '<b style="color:#fff;">$1</b>')
+                .replace(/\n/g, '<br>');
+
+            return formatted;
+        }
+
+        // ==================== 图片选择 ====================
+        function buildImageSelector() {
+            const container = document.getElementById('imageSelector');
+            const imageFiles = ['01.jpg', '02.jpg', '03.jpg', '04.jpg', '05.jpg', '06.jpg', '07.jpg'];
+
+            container.innerHTML = imageFiles.map((file, idx) => `
+                <div class="image-thumb" data-src="images/${file}" onclick="selectImage('images/${file}', this)" title="${file}">
+                    <img src="images/${file}" alt="${file}" loading="lazy">
+                    <span class="label">${file}</span>
+                </div>
+            `).join('');
+        }
+
+        function selectImage(src, element) {
+            // 更新 active 状态
+            document.querySelectorAll('.image-thumb').forEach(el => el.classList.remove('active'));
+            if (element) element.classList.add('active');
+
+            currentImageSrc = src;
+            currentImageData = true; // 标记已选择
+            setStatus('📷 已选择: ' + src.split('/').pop() + ' | 点击"运行聚类"开始分析', 'info');
+
+            // 自动运行聚类
+            runClustering();
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                currentImageSrc = e.target.result;
+                currentImageData = true;
+                document.querySelectorAll('.image-thumb').forEach(el => el.classList.remove('active'));
+                setStatus('📁 已上传: ' + file.name + ' | 点击"运行聚类"开始分析', 'info');
+                runClustering();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // ==================== 事件绑定 ====================
+        document.getElementById('kSlider').addEventListener('input', function() {
+            document.getElementById('kValue').textContent = this.value;
+        });
+
+        document.getElementById('sampleRate').addEventListener('input', function() {
+            document.getElementById('sampleRateLabel').textContent = this.value;
+            const info = currentImageData ?
+                '（修改后需重新运行聚类）' : '';
+            document.getElementById('sampleInfo').textContent =
+                `每 ${this.value} 个像素采样1个` + info;
+        });
+
+        // ==================== 初始化 ====================
+        function init() {
+            buildImageSelector();
+            bindChartTabs();
+            initCharts();
+            // 默认选择第一张图片
+            const firstThumb = document.querySelector('.image-thumb');
+            if (firstThumb) {
+                const src = firstThumb.getAttribute('data-src');
+                selectImage(src, firstThumb);
+            }
+        }
+
+        // 页面加载完成后初始化
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
